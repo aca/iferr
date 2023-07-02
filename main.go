@@ -18,17 +18,17 @@ const noname = "(no name)"
 var dbgLog *log.Logger
 
 var isNum = map[string]struct{}{
-	"int":     struct{}{},
-	"int16":   struct{}{},
-	"int32":   struct{}{},
-	"int64":   struct{}{},
-	"uint":    struct{}{},
-	"uint16":  struct{}{},
-	"uint32":  struct{}{},
-	"uint64":  struct{}{},
-	"float":   struct{}{},
-	"float32": struct{}{},
-	"float64": struct{}{},
+	"int":     {},
+	"int16":   {},
+	"int32":   {},
+	"int64":   {},
+	"uint":    {},
+	"uint16":  {},
+	"uint32":  {},
+	"uint64":  {},
+	"float":   {},
+	"float32": {},
+	"float64": {},
 }
 
 func logd(s string, args ...interface{}) {
@@ -56,9 +56,6 @@ func (v *visitor) Visit(node ast.Node) ast.Visitor {
 			return v
 		}
 		fname := noname
-		if x.Name != nil {
-			fname = x.Name.Name
-		}
 		fname = x.Name.Name
 		if v.pos < x.Pos() || v.pos > x.End() {
 			return nil
@@ -133,7 +130,11 @@ func writeIferr(w io.Writer, types []ast.Expr) error {
 		return err
 	}
 	bb := &bytes.Buffer{}
-	bb.WriteString("if err != nil {\n\treturn ")
+	if ret {
+		bb.WriteString("return ")
+	} else {
+		bb.WriteString("if err != nil {\n\treturn ")
+	}
 	for i, t := range types {
 		if i > 0 {
 			bb.WriteString(", ")
@@ -154,6 +155,10 @@ func writeIferr(w io.Writer, types []ast.Expr) error {
 		}
 		if ts == "interface{}" {
 			bb.WriteString(`nil`)
+			continue
+		}
+		if ts == "time.Time" {
+			bb.WriteString("time.Time{}")
 			continue
 		}
 		if _, ok := isNum[ts]; ok {
@@ -177,7 +182,7 @@ func writeIferr(w io.Writer, types []ast.Expr) error {
 			continue
 		}
 		// treat it as an interface when type name has "."
-		if strings.Index(ts, ".") >= 0 {
+		if strings.Contains(ts, ".") {
 			bb.WriteString("nil")
 			continue
 		}
@@ -185,7 +190,10 @@ func writeIferr(w io.Writer, types []ast.Expr) error {
 		bb.WriteString(ts)
 		bb.WriteString("{}")
 	}
-	bb.WriteString("\n}\n")
+
+	if !ret {
+		bb.WriteString("\n}\n")
+	}
 	io.Copy(w, bb)
 	return nil
 }
@@ -208,6 +216,8 @@ func iferr(w io.Writer, r io.Reader, pos int) error {
 	return writeIferr(w, types)
 }
 
+var ret bool
+
 func main() {
 	var (
 		pos   int
@@ -215,6 +225,7 @@ func main() {
 	)
 	flag.IntVar(&pos, "pos", 0, "position of cursor")
 	flag.BoolVar(&debug, "debug", false, "enable debug log")
+	flag.BoolVar(&ret, "ret", false, "ret")
 	flag.Parse()
 	if debug {
 		dbgLog = log.New(os.Stderr, "D ", 0)
